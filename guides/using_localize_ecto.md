@@ -133,11 +133,16 @@ Localize.Ecto.Collation.collation_for!("de-AT", available: locales)
 
 ## Indexes
 
-An `ORDER BY ... COLLATE` clause only uses an index created with the same collation. If a collated sort is on a hot path, add a matching expression index in a migration:
+An `ORDER BY ... COLLATE` clause only uses an index created with the same collation. If a collated sort is on a hot path, add a matching index in a migration with `Localize.Ecto.Migration.collated/2`, which builds a collated column expression for `Ecto.Migration.index/3`:
 
 ```elixir
-execute(
-  ~s[CREATE INDEX products_name_de ON products (name COLLATE "de-x-icu")],
-  ~s[DROP INDEX products_name_de]
-)
+import Localize.Ecto.Migration
+
+create index("products", [collated(:name, "de")], name: :products_name_de)
+
+create index("products", [collated(:name, collation: "german_phonebook")], name: :products_name_phonebook)
 ```
+
+With such an index in place, `order_by: collate(p.name, "de")` is satisfied directly by an index scan with no sort step. All of `index/3`'s options compose as usual — `unique: true`, `concurrently: true`, `where:` and so on. Passing an explicit `:name` is recommended, since Ecto derives index names poorly from expression columns.
+
+One maintenance note: ICU collation data occasionally changes between ICU releases. If a PostgreSQL upgrade links a newer ICU, PostgreSQL warns of a collation version mismatch, and indexes built with that collation should be rebuilt — `REINDEX INDEX products_name_de` followed by `ALTER COLLATION "de-x-icu" REFRESH VERSION` clears the warning. This is uncommon, and it is the trade-off accepted by scoping linguistic collation to explicit expressions rather than the database default.

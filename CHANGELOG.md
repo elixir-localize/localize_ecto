@@ -14,6 +14,6 @@ Initial release.
 
 * Locale-to-collation resolution via CLDR language matching, including BCP 47 `-u-co-` collation types and direct collation names.
 
-* `Localize.Ecto.Migration.create_collation/2` and `drop_collation/2` for creating ICU collations reversibly in migrations.
+* `Localize.Ecto.Migration.create_collation/2` and `drop_collation/2` for creating ICU collations reversibly in migrations, and `collated/2` for building collated indexes with `Ecto.Migration.index/3`.
 
 See the [README](https://hexdocs.pm/localize_ecto/readme.html) for full documentation.

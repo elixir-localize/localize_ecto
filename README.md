@@ -60,13 +60,13 @@ If your server's set differs materially from the snapshot, pass your own list wi
 
 ## Performance considerations
 
-Linguistic comparison is more expensive than PostgreSQL's default byte-order comparison, and an `ORDER BY ... COLLATE` clause can only use an index that was created with the same collation. For hot queries, create an expression index with the collation you sort by:
+Linguistic comparison is more expensive than PostgreSQL's default byte-order comparison, and an `ORDER BY ... COLLATE` clause can only use an index that was created with the same collation. For hot queries, create an index with the collation you sort by using [Localize.Ecto.Migration.collated/2](https://hexdocs.pm/localize_ecto/Localize.Ecto.Migration.html#collated/2):
 
-```sql
-CREATE INDEX products_name_de ON products (name COLLATE "de-x-icu");
+```elixir
+create index("products", [collated(:name, "de")])
 ```
 
-Nondeterministic collations carry an additional performance penalty. See the [PostgreSQL collation documentation](https://www.postgresql.org/docs/current/collation.html) for the details of collation selection, index compatibility, and the trade-offs between providers.
+If a PostgreSQL upgrade links a newer ICU library whose collation data changed — uncommon, but it happens — PostgreSQL warns of a collation version mismatch and indexes built with that collation must be reindexed. Nondeterministic collations carry an additional performance penalty. See the [PostgreSQL collation documentation](https://www.postgresql.org/docs/current/collation.html) for the details of collation selection, index compatibility, and the trade-offs between providers.
 
 ## Guides
 

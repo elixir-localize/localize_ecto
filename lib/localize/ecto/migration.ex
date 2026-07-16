@@ -190,6 +190,63 @@ if Code.ensure_loaded?(Ecto.Migration) do
       "DROP COLLATION #{if_exists}#{quote_name(name, options[:schema])}"
     end
 
+    @doc """
+    Returns a collated column expression for use in an index definition.
+
+    PostgreSQL only uses an index for a collated sort or comparison when
+    the index was created with the same collation. This function builds
+    the column expression for such an index, for use with
+    `Ecto.Migration.index/3`:
+
+        create index("products", [collated(:name, "de")])
+
+        create index("products", [collated(:name, collation: "german_phonebook")])
+
+    Note that if a PostgreSQL upgrade links a newer ICU library whose
+    collation data changed — uncommon, but it happens — PostgreSQL warns
+    of a collation version mismatch and indexes built with that
+    collation must be reindexed (`REINDEX INDEX index_name`, then
+    `ALTER COLLATION collation_name REFRESH VERSION`).
+
+    ### Arguments
+
+    * `column` is the column name as an atom or string.
+
+    * `locale_or_options` is a locale accepted by
+      `Localize.Ecto.Collation.collation_for!/2`, or a keyword list with
+      a `:collation` option naming a collation directly. The default is
+      the current locale from `Localize.get_locale/0`.
+
+    ### Returns
+
+    * A column expression string such as `"name" COLLATE "de-x-icu"`.
+
+    ### Examples
+
+        iex> Localize.Ecto.Migration.collated(:name, "de")
+        ~s["name" COLLATE "de-x-icu"]
+
+        iex> Localize.Ecto.Migration.collated(:name, collation: "german_phonebook")
+        ~s["name" COLLATE "german_phonebook"]
+
+    """
+    @spec collated(atom() | String.t(), Localize.locale() | String.t() | Keyword.t()) ::
+            String.t()
+    def collated(column, locale_or_options \\ Localize.get_locale()) do
+      column = to_string(column)
+      collation = Collation.resolve!(locale_or_options)
+
+      if String.contains?(column, ~s(")) do
+        raise ArgumentError, "column name #{inspect(column)} contains a double quote"
+      end
+
+      if String.contains?(collation, ~s(")) do
+        raise ArgumentError, "collation name #{inspect(collation)} contains a double quote"
+      end
+
+      ~s("#{column}" COLLATE "#{collation}")
+    end
+
     defp collation_sql_pair(locale, options) do
       {create_collation_sql(locale, options), drop_collation_sql(locale, options)}
     end

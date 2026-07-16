@@ -6,13 +6,21 @@ Collation is the set of rules that determines how text sorts and compares. This 
 
 Every PostgreSQL database has a default collation, fixed at `CREATE DATABASE` time, that applies to every text comparison and sort that does not name a collation explicitly. It also determines the behavior of case conversion (`upper`, `lower`, `ILIKE`) through its character-classification (ctype) side.
 
-Our recommendation is to keep the database default simple and stable, and to apply linguistic collation explicitly in queries with `COLLATE` — which is exactly what this library does. Two defaults fit that recommendation:
+Our recommendation: make the database default the builtin `C.UTF-8` locale (PostgreSQL 17 and later), falling back to the `C` locale on older PostgreSQL releases, and apply linguistic collation explicitly in queries with `COLLATE` — which is exactly what this library does.
 
-* The `C` locale. Sorting is plain byte order: fast, immutable across operating system and library upgrades, and free of surprises in indexes. The trade-off is that its ctype is ASCII-only, so `upper('öl')` returns `öL` — the `ö` is untouched. If you use case conversion on non-ASCII text, apply a collation to the expression (`upper('öl' COLLATE "de-x-icu")` returns `ÖL`) or prefer the next option.
+* `C.UTF-8` (provider `builtin`, PostgreSQL 17+) sorts in Unicode code-point order — fast and permanently stable — while its ctype is full Unicode, so case conversion (`upper`, `lower`, `ILIKE`) works for all scripts without naming a collation.
 
-* The builtin `C.UTF-8` locale (PostgreSQL 17 and later, provider `builtin`). Sorting is Unicode code-point order — equally fast and stable — while ctype is full Unicode, so case conversion works for all scripts without an explicit collation.
+* `C` is the fallback for PostgreSQL 16 and earlier. Sorting is plain byte order, equally fast and stable, but its ctype is ASCII-only: `upper('öl')` returns `öL` with the `ö` untouched. Where you need case conversion on non-ASCII text, apply a collation to the expression — `upper('öl' COLLATE "de-x-icu")` returns `ÖL`.
 
-A word on why stability matters: a database default drawn from an operating system locale (the libc provider, for example `en_US.UTF-8`) changes behavior when the operating system's locale data changes. Because indexes are built in collation order, a changed sort order can silently corrupt index correctness after an OS upgrade. Byte order and code-point order never change.
+The reason for this recommendation is stability. A database default is fixed at `CREATE DATABASE` time, every index on text is built in its sort order, and a sort order that changes underneath an existing index silently corrupts the index's correctness. Each external collation provider carries exactly that risk:
+
+* Operating system releases. A libc default such as `en_US.UTF-8` sorts according to the OS locale data, which changes with OS upgrades — the classic cause of index corruption after a glibc update.
+
+* ICU releases. An ICU default would tie the database's sort order to the ICU library version, which changes as CLDR data evolves; PostgreSQL records collation versions and warns of mismatches, but the remedy is still reindexing the affected database.
+
+* PostgreSQL releases. Byte order and code-point order are defined by Unicode itself, not by any library's tailoring data, so a `C` or `C.UTF-8` default behaves identically across PostgreSQL upgrades and never demands a reindex.
+
+Scoping linguistic collation to query expressions confines the versioned, changeable part of collation to the places that opt into it — and any index created with an explicit ICU collation (see `Localize.Ecto.Migration.collated/2`) is a known, listed object that can be reindexed deliberately when the ICU version moves.
 
 Neither `C` nor `C.UTF-8` sorts linguistically — `Zebra` sorts before `apple` because `Z` has a smaller code point than `a`. That is the point of the division of labor: the default collation keeps storage and indexes fast and stable, and queries opt into linguistic ordering per expression:
 
