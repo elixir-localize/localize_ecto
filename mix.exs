@@ -23,7 +23,7 @@ defmodule LocalizeEcto.MixProject do
     [
       {:ecto, "~> 3.12"},
       {:localize, "~> 0.50"},
-      {:ecto_sql, "~> 3.12", only: [:dev, :test]},
+      {:ecto_sql, "~> 3.12", optional: true},
       {:postgrex, "~> 0.20", only: [:dev, :test]},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: [:dev, :release], runtime: false}

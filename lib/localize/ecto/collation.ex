@@ -32,8 +32,6 @@ defmodule Localize.Ecto.Collation do
                     |> File.read!()
                     |> String.split("\n", trim: true)
 
-  @root_collation "und-x-icu"
-
   @doc """
   Returns the PostgreSQL ICU collation name for the given locale.
 
@@ -121,6 +119,55 @@ defmodule Localize.Ecto.Collation do
   end
 
   @doc """
+  Resolves the argument of `Localize.Ecto.collate/2` to a collation
+  name.
+
+  This is the runtime companion of the `Localize.Ecto.collate/1,2`
+  macros and is not usually called directly.
+
+  ### Arguments
+
+  * `locale_or_options` is a locale accepted by `collation_for!/2`, or
+    a keyword list.
+
+  ### Options
+
+  * `:collation` is a collation name used verbatim, bypassing locale
+    resolution — for example a collation created with
+    `Localize.Ecto.Migration.create_collation/2` under a custom name.
+
+  * Any other options are passed to `collation_for!/2`.
+
+  ### Returns
+
+  * A collation name string, or
+
+  * raises if the locale is not valid.
+
+  ### Examples
+
+      iex> Localize.Ecto.Collation.resolve!("sv")
+      "sv-x-icu"
+
+      iex> Localize.Ecto.Collation.resolve!(collation: "german_phonebook")
+      "german_phonebook"
+
+  """
+  @spec resolve!(Localize.locale() | String.t() | Keyword.t()) :: String.t()
+  def resolve!(locale_or_options \\ Localize.get_locale())
+
+  def resolve!(options) when is_list(options) do
+    case Keyword.pop(options, :collation) do
+      {nil, options} -> collation_for!(Localize.get_locale(), options)
+      {collation, _options} -> collation
+    end
+  end
+
+  def resolve!(locale) do
+    collation_for!(locale)
+  end
+
+  @doc """
   Returns the list of locales for which a PostgreSQL ICU collation is
   known to exist.
 
@@ -169,9 +216,32 @@ defmodule Localize.Ecto.Collation do
   # turn a requested "und" into its maximization "en" and lose the
   # root-collation request.
   defp match_collation(%LanguageTag{} = language_tag, available) do
-    case LanguageTag.best_match(language_tag.canonical_locale_id, available) do
-      {:ok, locale, _distance} -> locale <> "-x-icu"
-      {:error, _} -> @root_collation
+    base =
+      case LanguageTag.best_match(language_tag.canonical_locale_id, available) do
+        {:ok, locale, _distance} -> locale
+        {:error, _} -> "und"
+      end
+
+    case collation_type(language_tag) do
+      nil -> base <> "-x-icu"
+      collation_type -> base <> "-u-co-" <> collation_type <> "-x-icu"
     end
+  end
+
+  # The BCP 47 -u-co- collation type of the locale, in its short form
+  # (:phonebook encodes as "phonebk"), or nil when absent or the
+  # default. PostgreSQL does not preload keyword-tailored collations, so
+  # names carrying a collation type must be created in a migration with
+  # Localize.Ecto.Migration.create_collation/2.
+  defp collation_type(%LanguageTag{locale: %Localize.LanguageTag.U{co: co} = u_extension})
+       when co not in [nil, :standard] do
+    case List.keyfind(Localize.LanguageTag.U.encode(u_extension), "co", 0) do
+      {"co", collation_type} -> collation_type
+      nil -> nil
+    end
+  end
+
+  defp collation_type(%LanguageTag{}) do
+    nil
   end
 end

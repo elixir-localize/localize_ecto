@@ -46,6 +46,65 @@ defmodule Localize.EctoTest do
       assert to_sql(query) =~ ~s[WHERE (p0."name" COLLATE "tr-x-icu" = 'istanbul')]
     end
 
+    test "uses a collation name given directly" do
+      query =
+        from p in "products",
+          order_by: collate(p.name, collation: "german_phonebook"),
+          select: p.name
+
+      assert to_sql(query) =~ ~s[COLLATE "german_phonebook"]
+    end
+
+    test "accepts pinned runtime options" do
+      options = [collation: "german_phonebook"]
+      query = from p in "products", order_by: collate(p.name, ^options), select: p.name
+
+      assert to_sql(query) =~ ~s[COLLATE "german_phonebook"]
+    end
+
+    test "resolves a -u-co- locale to its keyword collation name" do
+      query =
+        from p in "products",
+          order_by: collate(p.name, "de-u-co-phonebk"),
+          select: p.name
+
+      assert to_sql(query) =~ ~s[COLLATE "de-u-co-phonebk-x-icu"]
+    end
+
+    test "collates a comparison" do
+      query = from p in "products", where: collate(p.name < p.brand, "de"), select: p.id
+
+      assert to_sql(query) =~ ~s[WHERE (p0."name" < p0."brand" COLLATE "de-x-icu")]
+    end
+
+    test "collates comparisons for every operator" do
+      for {operator, sql} <- [
+            {quote(do: p.a < p.b), "<"},
+            {quote(do: p.a > p.b), ">"},
+            {quote(do: p.a <= p.b), "<="},
+            {quote(do: p.a >= p.b), ">="},
+            {quote(do: p.a == p.b), "="},
+            {quote(do: p.a != p.b), "<>"}
+          ] do
+        {query, _} =
+          Code.eval_quoted(
+            quote do
+              import Ecto.Query
+              import Localize.Ecto
+              from p in "products", select: collate(unquote(operator), "sv")
+            end
+          )
+
+        assert to_sql(query) =~ ~s[p0."a" #{sql} p0."b" COLLATE "sv-x-icu"]
+      end
+    end
+
+    test "collates a comparison in a select expression" do
+      query = from p in "products", select: collate(p.name < p.brand, "de")
+
+      assert to_sql(query) =~ ~s[SELECT p0."name" < p0."brand" COLLATE "de-x-icu"]
+    end
+
     test "raises for an invalid locale when the query is built" do
       assert_raise Localize.InvalidLocaleError, fn ->
         from p in "products", order_by: collate(p.name, "zzzz"), select: p.name

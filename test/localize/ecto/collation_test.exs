@@ -40,9 +40,19 @@ defmodule Localize.Ecto.CollationTest do
       assert Collation.collation_for("und") == {:ok, "und-x-icu"}
     end
 
-    test "ignores locale extensions" do
-      assert Collation.collation_for("en-US-u-co-phonebk") == {:ok, "en-x-icu"}
+    test "ignores locale extensions other than the collation type" do
       assert Collation.collation_for("de-u-nu-latn") == {:ok, "de-x-icu"}
+      assert Collation.collation_for("en-u-ca-buddhist") == {:ok, "en-x-icu"}
+    end
+
+    test "carries the -u-co- collation type into the collation name" do
+      assert Collation.collation_for("de-u-co-phonebk") == {:ok, "de-u-co-phonebk-x-icu"}
+      assert Collation.collation_for("de-DE-u-co-phonebk") == {:ok, "de-u-co-phonebk-x-icu"}
+      assert Collation.collation_for("zh-u-co-stroke") == {:ok, "zh-u-co-stroke-x-icu"}
+    end
+
+    test "treats the standard collation type as the default" do
+      assert Collation.collation_for("en-u-co-standard") == {:ok, "en-x-icu"}
     end
 
     test "accepts a validated language tag" do
