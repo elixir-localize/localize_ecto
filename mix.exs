@@ -55,6 +55,7 @@ defmodule LocalizeEcto.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
+      formatters: ["html", "markdown"],
       extras: [
         "README.md",
         "guides/using_localize_ecto.md",
