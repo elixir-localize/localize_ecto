@@ -8,6 +8,9 @@ on:
 
 env:
   MIX_ENV: test
+  PGHOST: localhost
+  PGUSER: postgres
+  PGPASSWORD: postgres
 
 permissions:
   contents: read
@@ -16,6 +19,19 @@ jobs:
   test:
     name: "Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}${{ matrix.lint && ' (lint)' || '' }}"
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     strategy:
       fail-fast: false
@@ -76,6 +92,10 @@ jobs:
       - name: Check formatting
         if: matrix.lint
         run: mix format --check-formatted
+
+      - name: Run credo
+        if: matrix.lint
+        run: mix credo --strict
 
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors

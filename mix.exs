@@ -11,6 +11,7 @@ defmodule LocalizeEcto.MixProject do
       name: "Localize Ecto",
       source_url: @source_url,
       elixir: "~> 1.17",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: description(),
@@ -68,14 +69,32 @@ defmodule LocalizeEcto.MixProject do
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
   defp deps do
     [
       {:ecto, "~> 3.12"},
       {:localize, "~> 0.50"},
       {:ecto_sql, "~> 3.12", optional: true},
       {:postgrex, "~> 0.20", only: [:dev, :test]},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: [:dev, :release], runtime: false}
-    ]
+    ] ++ maybe_json_polyfill()
+  end
+
+  # json_polyfill (the EEP 68 :json module for OTP 26) is provided for
+  # this project's own dev/test/CI only — `only:` dependencies never
+  # enter the hex package requirements. OTP 26 consumers add
+  # {:json_polyfill, "~> 0.2 or ~> 1.0"} to their own deps, as the
+  # localize README documents. The conditional avoids fetching it on
+  # OTP >= 27, where :json is built in.
+  defp maybe_json_polyfill do
+    if Code.ensure_loaded?(:json) do
+      []
+    else
+      [{:json_polyfill, "~> 0.2 or ~> 1.0", only: [:dev, :test]}]
+    end
   end
 end
