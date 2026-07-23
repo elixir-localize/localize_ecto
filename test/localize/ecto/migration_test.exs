@@ -21,9 +21,42 @@ defmodule Localize.Ecto.MigrationTest do
                ~s[CREATE COLLATION "german_phonebook" (provider = icu, locale = 'de-u-co-phonebk')]
     end
 
-    test "preserves non-collation extensions in the ICU locale" do
+    test "an insensitive strength defaults to a nondeterministic collation" do
+      # A primary/secondary-strength collation only compares case and
+      # accent variants as equal when it is nondeterministic, so that
+      # is the default for those strengths.
       assert Migration.create_collation_sql("und-u-ks-level2", name: "case_insensitive") ==
+               ~s[CREATE COLLATION "case_insensitive" (provider = icu, locale = 'und-u-ks-level2', deterministic = false)]
+
+      assert Migration.create_collation_sql("und-u-ks-level2",
+               name: "case_insensitive",
+               deterministic: true
+             ) ==
                ~s[CREATE COLLATION "case_insensitive" (provider = icu, locale = 'und-u-ks-level2')]
+    end
+
+    test "tailoring options merge into the locale and name" do
+      assert Migration.create_collation_sql("en", numeric: true) ==
+               ~s[CREATE COLLATION "en-u-kn-true-x-icu" (provider = icu, locale = 'en-u-kn-true')]
+
+      assert Migration.create_collation_sql("und", strength: :primary) ==
+               ~s[CREATE COLLATION "und-u-ks-level1-x-icu" (provider = icu, locale = 'und-u-ks-level1', deterministic = false)]
+
+      assert Migration.create_collation_sql("und", strength: :primary, case_level: true) ==
+               ~s[CREATE COLLATION "und-u-kc-true-ks-level1-x-icu" (provider = icu, locale = 'und-u-kc-true-ks-level1', deterministic = false)]
+
+      assert Migration.create_collation_sql("de-u-co-phonebk", numeric: true) ==
+               ~s[CREATE COLLATION "de-u-co-phonebk-kn-true-x-icu" (provider = icu, locale = 'de-u-co-phonebk-kn-true')]
+    end
+
+    test "tailoring options reject invalid values" do
+      assert_raise ArgumentError, ~r/strength/, fn ->
+        Migration.create_collation_sql("en", strength: :extreme)
+      end
+
+      assert_raise ArgumentError, ~r/numeric/, fn ->
+        Migration.create_collation_sql("en", numeric: :yes)
+      end
     end
 
     test "supports deterministic, if_not_exists and schema options" do

@@ -21,6 +21,43 @@ from p in Product, order_by: collate(p.name, collation: "german_phonebook")
 
 Locale resolution uses the [CLDR Language Matching](https://www.unicode.org/reports/tr35/tr35.html#LanguageMatching) algorithm, so any valid locale finds its best available collation — `"zh-TW"` resolves to `zh-Hant-x-icu`, `"de-DE"` to `de-x-icu`, and an unknown locale falls back gracefully. Locales that carry a BCP 47 collation type, such as `de-u-co-phonebk` (German phonebook order), resolve to collations you create once in a migration with [Localize.Ecto.Migration.create_collation/2](https://hexdocs.pm/localize_ecto/Localize.Ecto.Migration.html#create_collation/2).
 
+## Beyond ordering
+
+Collation tailoring, locale-aware search and case mapping, time zones, and operational auditing are covered by the same locale-first API:
+
+```elixir
+# Natural sort: "file2" before "file10" (create the collation once in a migration)
+create_collation("en", numeric: true)
+from f in Upload, order_by: collate(f.name, "en-u-kn-true")
+
+# Case-insensitive uniqueness without citext: a nondeterministic collation
+# at secondary strength, backing a unique index
+create_collation("und", strength: :secondary)
+create index("users", [collated(:email, "und-u-ks-level2")], unique: true)
+
+# Locale-aware full-text search: German stemming matches "Häuser" from "Haus"
+from a in Article, where: ts_match(a.body, "Haus", "de")
+
+# Locale-aware case mapping: Turkish lower("INDIGO") is "ındıgo"
+from p in Product, select: lower(p.name, "tr")
+
+# Time zones validated against the CLDR inventory
+field :time_zone, Localize.Ecto.Type.TimeZone
+from e in Event, select: at_time_zone(e.starts_at, "Australia/Sydney")
+```
+
+The [audit task](https://hexdocs.pm/localize_ecto/Mix.Tasks.Localize.Ecto.Audit.html) reports collation version drift after PostgreSQL/ICU upgrades — with the `REINDEX` and `ALTER COLLATION … REFRESH VERSION` remediation for every dependent index — and compares the server's Unicode, ICU and time zone inventories against the application's:
+
+```console
+$ mix localize.ecto.audit
+Audit for MyApp.Repo
+  Collation versions: no drift
+  Database default collation: no drift
+  Server: PostgreSQL 17.4, Unicode 15.1, ICU Unicode 16.0
+  Application: CLDR 48.0.0, Unicode 16.0
+  Time zones: all application zones known to the server (14 server-only zones)
+```
+
 ## Installation
 
 Add `localize_ecto` to your dependencies:

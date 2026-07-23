@@ -32,6 +32,14 @@ defmodule Localize.Ecto.Collation do
                     |> File.read!()
                     |> String.split("\n", trim: true)
 
+  # The BCP 47 -u- keywords that select a different ICU collator:
+  # collation type (co), alternate handling (ka), backwards second
+  # level (kb), case level (kc), case first (kf), numeric/natural
+  # sort (kn), reordering (kr), strength (ks) and variable top (kv).
+  # All of them are carried into the resolved collation name so that
+  # creation and query-time resolution stay symmetric.
+  @collation_keywords ~w(co ka kb kc kf kn kr ks kv)
+
   @doc """
   Returns the PostgreSQL ICU collation name for the given locale.
 
@@ -214,34 +222,49 @@ defmodule Localize.Ecto.Collation do
   # Matching is on canonical_locale_id rather than the language tag
   # struct: the struct fields are likely-subtag maximized, which would
   # turn a requested "und" into its maximization "en" and lose the
-  # root-collation request.
+  # root-collation request. Extension sections are stripped before
+  # matching — they would perturb the language-matching distance (a
+  # requested "und-u-ks-level2" must still match the root collation)
+  # and the collation-relevant keywords are re-attached afterwards.
   defp match_collation(%LanguageTag{} = language_tag, available) do
+    base_id =
+      language_tag.canonical_locale_id
+      |> String.split("-")
+      |> Enum.take_while(&(String.length(&1) > 1))
+      |> Enum.join("-")
+
     base =
-      case LanguageTag.best_match(language_tag.canonical_locale_id, available) do
+      case LanguageTag.best_match(base_id, available) do
         {:ok, locale, _distance} -> locale
         {:error, _} -> "und"
       end
 
-    case collation_type(language_tag) do
-      nil -> base <> "-x-icu"
-      collation_type -> base <> "-u-co-" <> collation_type <> "-x-icu"
+    case collation_keywords(language_tag) do
+      [] ->
+        base <> "-x-icu"
+
+      keywords ->
+        pairs = Enum.map_join(keywords, "-", fn {key, value} -> "#{key}-#{value}" end)
+        base <> "-u-" <> pairs <> "-x-icu"
     end
   end
 
-  # The BCP 47 -u-co- collation type of the locale, in its short form
-  # (:phonebook encodes as "phonebk"), or nil when absent or the
-  # default. PostgreSQL does not preload keyword-tailored collations, so
-  # names carrying a collation type must be created in a migration with
-  # Localize.Ecto.Migration.create_collation/2.
-  defp collation_type(%LanguageTag{locale: %Localize.LanguageTag.U{co: co} = u_extension})
-       when co not in [nil, :standard] do
-    case List.keyfind(Localize.LanguageTag.U.encode(u_extension), "co", 0) do
-      {"co", collation_type} -> collation_type
-      nil -> nil
-    end
+  # The collation-affecting -u- keywords of the locale in their
+  # canonical short encoding (:phonebook encodes as "phonebk"),
+  # sorted as `Localize.LanguageTag.U.encode/1` produces them. The
+  # default collation type (`co-standard`) is dropped — it selects
+  # the same collator as the bare locale. PostgreSQL only preloads
+  # collations for plain locales, so names carrying any keyword must
+  # be created in a migration with
+  # `Localize.Ecto.Migration.create_collation/2`.
+  defp collation_keywords(%LanguageTag{locale: %Localize.LanguageTag.U{} = u_extension}) do
+    u_extension
+    |> Localize.LanguageTag.U.encode()
+    |> Enum.filter(fn {key, _value} -> key in @collation_keywords end)
+    |> Enum.reject(fn {key, value} -> key == "co" and value == "standard" end)
   end
 
-  defp collation_type(%LanguageTag{}) do
-    nil
+  defp collation_keywords(%LanguageTag{}) do
+    []
   end
 end

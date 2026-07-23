@@ -16,7 +16,8 @@ defmodule LocalizeEcto.MixProject do
       deps: deps(),
       description: description(),
       package: package(),
-      docs: docs()
+      docs: docs(),
+      dialyzer: [plt_add_apps: [:mix, :ecto_sql]]
     ]
   end
 
@@ -76,7 +77,7 @@ defmodule LocalizeEcto.MixProject do
   defp deps do
     [
       {:ecto, "~> 3.12"},
-      {:localize, "~> 1.0-rc"},
+      {:localize, "~> 1.0-rc.1"},
       {:ecto_sql, "~> 3.12", optional: true},
       {:postgrex, "~> 0.20", only: [:dev, :test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

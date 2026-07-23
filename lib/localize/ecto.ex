@@ -145,6 +145,207 @@ defmodule Localize.Ecto do
   defp sql_operator(:!=), do: "<>"
   defp sql_operator(operator), do: Atom.to_string(operator)
 
+  @doc """
+  Applies PostgreSQL's `AT TIME ZONE` with a validated time zone.
+
+  The zone is canonicalized by `Localize.Ecto.Type.TimeZone.canonicalize!/1` when the query is built, so an alias or BCP 47 short zone identifier is accepted and an unknown zone raises in the application instead of failing on the server.
+
+  ### Arguments
+
+  * `expression` is an Ecto query expression that evaluates to a timestamp.
+
+  * `zone` is a canonical IANA name, a CLDR-known alias, or a BCP 47 short zone identifier. A pinned expression (`^zone`) is also accepted.
+
+  ### Returns
+
+  * A query fragment `expression AT TIME ZONE 'zone'`.
+
+  ### Examples
+
+      iex> import Ecto.Query
+      iex> query = from e in "events", select: at_time_zone(e.starts_at, "Australia/Sydney")
+      iex> match?(%Ecto.Query{}, query)
+      true
+
+  """
+  defmacro at_time_zone(expression, zone) do
+    zone = unpin(zone)
+
+    quote do
+      fragment(
+        "? AT TIME ZONE ?",
+        unquote(expression),
+        ^Localize.Ecto.Type.TimeZone.canonicalize!(unquote(zone))
+      )
+    end
+  end
+
+  @doc """
+  Locale-aware full-text search match using the current locale.
+
+  See `ts_match/3`.
+  """
+  defmacro ts_match(expression, query) do
+    build_ts_match(expression, query, quote(do: Localize.Ecto.TextSearch.config_for!()))
+  end
+
+  @doc """
+  Locale-aware full-text search match.
+
+  Expands to `to_tsvector(config, expression) @@ websearch_to_tsquery(config, query)` where `config` is the PostgreSQL text search configuration `Localize.Ecto.TextSearch.config_for!/2` resolves for the locale — `'german'` for `"de-AT"`, `'simple'` for languages PostgreSQL has no stemmer for.
+
+  ### Arguments
+
+  * `expression` is an Ecto query expression that evaluates to the searched text.
+
+  * `query` is the user's search input, in `websearch_to_tsquery` syntax.
+
+  * `locale_or_options` is a locale accepted by `Localize.Ecto.TextSearch.config_for!/2`, or a keyword list with a `:config` option naming a text search configuration directly. A pinned expression (`^locale`) is also accepted.
+
+  ### Returns
+
+  * A boolean query fragment for use in `where`.
+
+  ### Examples
+
+      iex> import Ecto.Query
+      iex> query = from p in "products", where: ts_match(p.description, "wooden chair", "de"), select: p.id
+      iex> match?(%Ecto.Query{}, query)
+      true
+
+  """
+  defmacro ts_match(expression, query, locale_or_options) do
+    locale_or_options = unpin(locale_or_options)
+
+    resolver =
+      quote do
+        case unquote(locale_or_options) do
+          options when is_list(options) ->
+            case Keyword.pop(options, :config) do
+              {nil, options} ->
+                Localize.Ecto.TextSearch.config_for!(Localize.get_locale(), options)
+
+              {config, _options} ->
+                config
+            end
+
+          locale ->
+            Localize.Ecto.TextSearch.config_for!(locale)
+        end
+      end
+
+    build_ts_match(expression, query, resolver)
+  end
+
+  # The configuration is bound as a text parameter and cast to
+  # regconfig on the server — postgrex encodes a bare `?::regconfig`
+  # parameter as an oid, not a name.
+  defp build_ts_match(expression, query, resolver) do
+    quote do
+      fragment(
+        "to_tsvector(?::text::regconfig, ?) @@ websearch_to_tsquery(?::text::regconfig, ?)",
+        ^unquote(resolver),
+        unquote(expression),
+        ^unquote(resolver),
+        unquote(query)
+      )
+    end
+  end
+
+  @doc """
+  Locale-aware `lower()` using the collation of the current locale.
+
+  See `lower/2`.
+  """
+  defmacro lower(expression) do
+    build_case(:lower, expression, quote(do: Localize.Ecto.Collation.resolve!()))
+  end
+
+  @doc """
+  Locale-aware `lower()`.
+
+  PostgreSQL's `lower()`, `upper()` and `initcap()` follow the collation of their argument, so the locale determines the case mapping — under a Turkish collation `lower("I")` is the dotless "ı", which the default collation gets wrong.
+
+  ### Arguments
+
+  * `expression` is an Ecto query expression that evaluates to a string.
+
+  * `locale_or_options` is a locale or keyword list as accepted by `collate/2`. A pinned expression (`^locale`) is also accepted.
+
+  ### Returns
+
+  * A query fragment `lower(expression COLLATE "collation")`.
+
+  ### Examples
+
+      iex> import Ecto.Query
+      iex> query = from p in "products", select: lower(p.name, "tr")
+      iex> match?(%Ecto.Query{}, query)
+      true
+
+  """
+  defmacro lower(expression, locale_or_options) do
+    locale_or_options = unpin(locale_or_options)
+
+    build_case(
+      :lower,
+      expression,
+      quote(do: Localize.Ecto.Collation.resolve!(unquote(locale_or_options)))
+    )
+  end
+
+  @doc """
+  Locale-aware `upper()` using the collation of the current locale.
+
+  See `lower/2`.
+  """
+  defmacro upper(expression) do
+    build_case(:upper, expression, quote(do: Localize.Ecto.Collation.resolve!()))
+  end
+
+  @doc """
+  Locale-aware `upper()`. See `lower/2` for the arguments and semantics.
+  """
+  defmacro upper(expression, locale_or_options) do
+    locale_or_options = unpin(locale_or_options)
+
+    build_case(
+      :upper,
+      expression,
+      quote(do: Localize.Ecto.Collation.resolve!(unquote(locale_or_options)))
+    )
+  end
+
+  @doc """
+  Locale-aware `initcap()` using the collation of the current locale.
+
+  See `lower/2`.
+  """
+  defmacro initcap(expression) do
+    build_case(:initcap, expression, quote(do: Localize.Ecto.Collation.resolve!()))
+  end
+
+  @doc """
+  Locale-aware `initcap()`. See `lower/2` for the arguments and semantics.
+  """
+  defmacro initcap(expression, locale_or_options) do
+    locale_or_options = unpin(locale_or_options)
+
+    build_case(
+      :initcap,
+      expression,
+      quote(do: Localize.Ecto.Collation.resolve!(unquote(locale_or_options)))
+    )
+  end
+
+  defp build_case(function, expression, resolver) do
+    sql = "#{function}(? COLLATE ?)"
+
+    quote do
+      fragment(unquote(sql), unquote(expression), literal(^unquote(resolver)))
+    end
+  end
+
   # The locale argument is evaluated as an ordinary expression, not as a
   # query expression, so a pin is not required. Accept one anyway since
   # pinning runtime values is idiomatic inside Ecto queries.

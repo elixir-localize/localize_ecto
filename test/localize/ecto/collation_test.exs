@@ -108,4 +108,29 @@ defmodule Localize.Ecto.CollationTest do
       refute "zh-TW" in known
     end
   end
+
+  describe "collation keyword resolution" do
+    test "carries collation-affecting -u- keywords into the name" do
+      assert Collation.collation_for!("de-u-kn-true") == "de-u-kn-true-x-icu"
+      assert Collation.collation_for!("und-u-ks-level2") == "und-u-ks-level2-x-icu"
+
+      assert Collation.collation_for!("und-u-kc-true-ks-level1") ==
+               "und-u-kc-true-ks-level1-x-icu"
+
+      assert Collation.collation_for!("de-u-co-phonebk-kn-true") ==
+               "de-u-co-phonebk-kn-true-x-icu"
+    end
+
+    test "the root locale with keywords still matches the root collation" do
+      assert Collation.collation_for!("und-u-ks-level2") == "und-u-ks-level2-x-icu"
+    end
+
+    test "non-collation keywords are not carried into the name" do
+      assert Collation.collation_for!("de-u-nu-thai-hc-h23") == "de-x-icu"
+    end
+
+    test "the default collation type is dropped" do
+      assert Collation.collation_for!("de-u-co-standard") == "de-x-icu"
+    end
+  end
 end
