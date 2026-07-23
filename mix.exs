@@ -17,7 +17,11 @@ defmodule LocalizeEcto.MixProject do
       description: description(),
       package: package(),
       docs: docs(),
-      dialyzer: [plt_add_apps: [:mix, :ecto_sql]]
+      dialyzer: [plt_add_apps: [:mix, :ecto_sql]],
+      # The audit mix task is CLI glue over `Localize.Ecto.Audit`
+      # (which is covered); mix tasks are excluded from coverage
+      # measurement as in the localize repo.
+      test_coverage: [ignore_modules: [~r/^Mix\.Tasks\./]]
     ]
   end
 

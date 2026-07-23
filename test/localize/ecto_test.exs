@@ -122,4 +122,36 @@ defmodule Localize.EctoTest do
       Localize.put_locale("en")
     end
   end
+
+  describe "current-locale arities of the query helpers" do
+    test "lower/1, upper/1 and initcap/1 use the current locale's collation" do
+      {:ok, _} = Localize.put_locale("tr")
+
+      lower_query = from p in "products", select: lower(p.name)
+      upper_query = from p in "products", select: upper(p.name)
+      initcap_query = from p in "products", select: initcap(p.name)
+
+      assert to_sql(lower_query) =~ ~s[lower(p0."name" COLLATE "tr-x-icu")]
+      assert to_sql(upper_query) =~ ~s[upper(p0."name" COLLATE "tr-x-icu")]
+      assert to_sql(initcap_query) =~ ~s[initcap(p0."name" COLLATE "tr-x-icu")]
+    after
+      Localize.put_locale("en")
+    end
+
+    test "ts_match/2 resolves the configuration from the current locale" do
+      {:ok, _} = Localize.put_locale("de")
+      query = from p in "products", where: ts_match(p.name, "stuhl"), select: p.name
+
+      assert to_sql(query) =~ "to_tsvector"
+    after
+      Localize.put_locale("en")
+    end
+
+    test "a pinned zone is accepted by at_time_zone/2" do
+      zone = "ausyd"
+      query = from p in "products", select: at_time_zone(p.inserted_at, ^zone)
+
+      assert to_sql(query) =~ "AT TIME ZONE"
+    end
+  end
 end
