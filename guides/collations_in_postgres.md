@@ -81,24 +81,30 @@ end
 
 This runs `CREATE COLLATION "de-u-co-phonebk-x-icu" (provider = icu, locale = 'de-u-co-phonebk')`. The name matches what `Localize.Ecto.Collation` resolves the locale to, so from then on `collate(p.name, "de-u-co-phonebk")` works with no further configuration. German phonebook order treats `ü` as `ue`: standard German sorts `Mueller, Muller, Müller` while phonebook order sorts `Mueller, Müller, Muller`. Other collation types include `zh-u-co-stroke` and `zh-u-co-zhuyin` for Chinese stroke and Bopomofo orderings, and `es-u-co-trad` for traditional Spanish, where `ch` sorts as a single letter.
 
-Other ICU keywords open up collation behaviors beyond language tailoring:
+Other ICU keywords open up collation behaviors beyond language tailoring. `Localize.Ecto.Migration.create_collation/2` accepts them as tailoring options using the `Localize.Collation.Options` vocabulary, and query-time resolution carries the same keywords, so the locale-with-keywords form works end to end without naming anything:
 
-* Numeric ordering (`-u-kn`) compares digit sequences by numeric value, giving natural sort: `file1, file2, file10` instead of `file1, file10, file2`.
-
-  ```elixir
-  create_collation("und-u-kn", name: "natural_sort")
-  ```
-
-* Strength reduction (`-u-ks-level2`) ignores case differences. Combined with `deterministic: false` this yields a collation under which `'HELLO' = 'hello'` is true — case-insensitive matching without `citext` or `lower()` wrappers, at the cost that `LIKE` and pattern matching cannot use the collation.
+* Numeric ordering (`-u-kn`, option `numeric: true`) compares digit sequences by numeric value, giving natural sort: `file1, file2, file10` instead of `file1, file10, file2`.
 
   ```elixir
-  create_collation("und-u-ks-level2", name: "case_insensitive", deterministic: false)
+  # In a migration
+  create_collation("en", numeric: true)
+
+  # In queries — resolves to the collation created above
+  from f in Upload, order_by: collate(f.name, "en-u-kn-true")
   ```
 
-Named collations like these are used in queries with the `:collation` option:
+* Strength reduction (`-u-ks-level2`, option `strength: :secondary`) ignores case differences; `strength: :primary` ignores accents too. These strengths default to a nondeterministic collation — the only mode in which `'HELLO' = 'hello'` is actually true — giving case-insensitive matching without `citext` or `lower()` wrappers, at the cost that `LIKE` and pattern matching cannot use the collation (PostgreSQL 18 lifts the `LIKE` restriction). A unique index over such a collation enforces case-insensitive uniqueness:
+
+  ```elixir
+  create_collation("und", strength: :secondary)
+  create index("users", [collated(:email, "und-u-ks-level2")], unique: true)
+  ```
+
+Custom-named collations are used in queries with the `:collation` option:
 
 ```elixir
-from f in File, order_by: collate(f.name, collation: "natural_sort")
+create_collation("und", numeric: true, name: "natural_sort")
+from f in Upload, order_by: collate(f.name, collation: "natural_sort")
 ```
 
-Two practical notes. PostgreSQL normalizes ICU locale identifiers when it stores them, so `und-u-kn-true` is recorded in standard form as `und-u-kn` — pass the standard form to avoid a notice. And because collations live in the database, remember that a collation created in a migration exists per database: test, dev, and production each get theirs when migrations run.
+Two practical notes. PostgreSQL normalizes ICU locale identifiers when it stores them (`und-u-kn-true` is recorded as `und-u-kn`), which can produce a server notice at creation time — harmless, and the collation's name is unaffected. And because collations live in the database, remember that a collation created in a migration exists per database: test, dev, and production each get theirs when migrations run.

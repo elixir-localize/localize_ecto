@@ -107,15 +107,21 @@ from p in Product, order_by: collate(p.name, "de-u-co-phonebk")
 
 The difference is real: standard German sorts `Mueller, Muller, Müller` while phonebook order treats `ü` as `ue` and sorts `Mueller, Müller, Muller`.
 
-Custom names and other ICU tailorings are supported through options:
+Custom names and other ICU tailorings are supported through options, using the same vocabulary as `Localize.Collation.Options`:
 
 ```elixir
 create_collation("de-u-co-phonebk", name: "german_phonebook")
 
-create_collation("und-u-ks-level2", name: "case_insensitive", deterministic: false)
+# Case-insensitive: secondary strength defaults to a
+# nondeterministic collation, the only mode in which case
+# variants actually compare equal
+create_collation("und", strength: :secondary)
+
+# Natural sort: "file2" before "file10"
+create_collation("en", numeric: true)
 ```
 
-The second example creates a nondeterministic, case-insensitive collation from ICU's `ks-level2` (strength: secondary) tailoring — useful for case-insensitive equality, with the caveats described in the [README](https://hexdocs.pm/localize_ecto/readme.html#deterministic-collations-and-unicode-normalization).
+Query-time resolution carries the same `-u-` keywords, so a tailored collation created under its default name is found automatically — `collate(f.name, "en-u-kn-true")` after `create_collation("en", numeric: true)`. See [Collations in PostgreSQL](https://hexdocs.pm/localize_ecto/collations_in_postgres.html) for the caveats around nondeterministic collations.
 
 ## Matching against a different server
 

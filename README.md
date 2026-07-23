@@ -65,7 +65,7 @@ Add `localize_ecto` to your dependencies:
 ```elixir
 def deps do
   [
-    {:localize_ecto, "~> 0.1.0"}
+    {:localize_ecto, "~> 0.3.0"}
   ]
 end
 ```
@@ -115,4 +115,4 @@ If a PostgreSQL upgrade links a newer ICU library whose collation data changed â
 
 Copyright 2026 Kip Cole
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](https://github.com/elixir-localize/localize_ecto/blob/v0.1.0/LICENSE.md).
+Licensed under the Apache License, Version 2.0. See [LICENSE](https://github.com/elixir-localize/localize_ecto/blob/v0.3.0/LICENSE.md).
